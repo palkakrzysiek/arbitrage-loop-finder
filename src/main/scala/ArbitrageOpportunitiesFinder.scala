@@ -193,6 +193,6 @@ object ArbitrageOpportunitiesFinder extends App {
 
   val loops = ArbitrageLoop.find(conversions)
 
-  ArbitrageLoop.reportArbitrageLoops(conversions, loops)
+  ArbitrageLoop.reportArbitrageLoops(conversions, loops).foreach(println)
 
 }
