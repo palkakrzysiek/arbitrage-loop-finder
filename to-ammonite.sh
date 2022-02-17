@@ -4,5 +4,5 @@
 
 sed '/^package.*/d' src/main/scala/ArbitrageOpportunitiesFinder.scala | sed '/./,$!d' > ArbitrageOpportunitiesFinder.sc
 
-echo "ArbitrageOpportunitiesFinder.main(Array())" >> ArbitrageOpportunitiesFinder.sc
+echo -e "\nArbitrageOpportunitiesFinder.main(Array())" >> ArbitrageOpportunitiesFinder.sc
 
