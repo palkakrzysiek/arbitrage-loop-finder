@@ -10,14 +10,14 @@ import scala.io.Source
 class ArbitrageOpportunitiesFinderTest extends AnyFunSuite with should.Matchers {
   test("single edge") {
     val usd = new Vertex("USD")
-    val res = BF.find(Seq(new Edge(usd, usd, 1.0)))
+    val res = BellmanFordAlgorithm.findNegativeCycle(Seq(new Edge(usd, usd, 1.0)))
     println(res)
   }
 
   test("single cycle equilibrium") {
     val usd = new Vertex("USD")
     val pln = new Vertex("PLN")
-    val res = BF.find(
+    val res = BellmanFordAlgorithm.findNegativeCycle(
       Seq(
         new Edge(usd, pln, -Math.log(0.25)),
         new Edge(pln, usd, -Math.log(4))
@@ -29,7 +29,7 @@ class ArbitrageOpportunitiesFinderTest extends AnyFunSuite with should.Matchers 
   test("single cycle arbitrage opportunity") {
     val usd = new Vertex("USD")
     val pln = new Vertex("PLN")
-    val res = BF.find(
+    val res = BellmanFordAlgorithm.findNegativeCycle(
       Seq(
         new Edge(usd, pln, -Math.log(0.25)),
         new Edge(pln, usd, -Math.log(5))
@@ -42,7 +42,7 @@ class ArbitrageOpportunitiesFinderTest extends AnyFunSuite with should.Matchers 
     val usd = new Vertex("USD")
     val pln = new Vertex("PLN")
     val eur = new Vertex("EUR")
-    val res = BF.find(
+    val res = BellmanFordAlgorithm.findNegativeCycle(
       Seq(
         new Edge(usd, pln, -Math.log(0.25)),
         new Edge(pln, usd, -Math.log(4)),
@@ -57,7 +57,7 @@ class ArbitrageOpportunitiesFinderTest extends AnyFunSuite with should.Matchers 
     val usd = new Vertex("USD")
     val pln = new Vertex("PLN")
     val eur = new Vertex("EUR")
-    val res = BF.find(
+    val res = BellmanFordAlgorithm.findNegativeCycle(
       Seq(
         new Edge(usd, pln, -Math.log(0.25)),
         new Edge(pln, usd, -Math.log(5)),
@@ -72,7 +72,7 @@ class ArbitrageOpportunitiesFinderTest extends AnyFunSuite with should.Matchers 
     val a = new Vertex("A")
     val b = new Vertex("B")
     val c = new Vertex("C")
-    val res = BF.find(
+    val res = BellmanFordAlgorithm.findNegativeCycle(
       Seq(
         new Edge(a, b, -1),
         new Edge(b, a, -1),
@@ -90,14 +90,12 @@ class ArbitrageOpportunitiesFinderTest extends AnyFunSuite with should.Matchers 
     val d = new Vertex("D")
     val e = new Vertex("E")
     val res = Tarjan.split(
-      BF.groupEdgesByVertex(
-        Seq(
-          new Edge(a, b, -1),
-          new Edge(b, a, -1),
-          new Edge(b, c, -1),
-          new Edge(c, b, -1),
-          new Edge(e, d, -1)
-        )
+      Seq(
+        new Edge(a, b, -1),
+        new Edge(b, a, -1),
+        new Edge(b, c, -1),
+        new Edge(c, b, -1),
+        new Edge(e, d, -1)
       )
     )
     println(res)

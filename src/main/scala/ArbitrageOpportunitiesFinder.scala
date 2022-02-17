@@ -2,24 +2,12 @@ package com.kpalka
 
 import scala.collection.mutable
 
-/** Instantiation only via helper's apply method to avoid having
-  * multiple instances of the same asset. Instantiation is not thread-safe.
-  */
-class Asset private (val ticker: String) {
-  override def toString: String = ticker
-}
-
-object Asset {
-  private val instances: mutable.Map[String, Asset] = mutable.Map[String, Asset]()
-  def apply(ticker: String): Asset = instances.getOrElseUpdate(ticker, new Asset(ticker))
-}
-
-case class Conversion(from: Asset, to: Asset)
+case class Conversion(from: String, to: String)
 
 object JsonParser {
   private def parsePair(pair: String): Conversion = {
     val split = pair.split("_")
-    Conversion(Asset(split(0)), Asset(split(1)))
+    Conversion(split(0), split(1))
   }
   def parse(str: String): Map[Conversion, Double] = {
     ujson
@@ -33,7 +21,8 @@ object JsonParser {
 }
 
 object Tarjan {
-  def split[A](edgesByVertex: Map[Vertex[A], Seq[Edge[A]]]): Set[Map[Vertex[A], Seq[Edge[A]]]] = {
+
+  def split[A](edges: Seq[Edge[A]]): Set[Map[Vertex[A], Seq[Edge[A]]]] = {
 
     var index = 0
     val stack = mutable.Stack.empty[Vertex[A]]
@@ -41,6 +30,14 @@ object Tarjan {
     val indexes = mutable.Map.empty[Vertex[A], Int]
     val lowLinks = mutable.Map.empty[Vertex[A], Int]
     val stronglyConnectedComponents = mutable.Set.empty[Map[Vertex[A], Seq[Edge[A]]]]
+
+    val edgesByVertex = edges
+      .foldLeft(Map.empty[Vertex[A], Seq[Edge[A]]])((acc, edge) =>
+        acc + (edge.from -> {
+          val x: Seq[Edge[A]] = acc.getOrElse(edge.from, Seq.empty[Edge[A]])
+          x :+ edge
+        })
+      )
 
     for (vertex <- edgesByVertex.keys) {
       if (!indexes.isDefinedAt(vertex))
@@ -91,43 +88,48 @@ object Edge {
   def unapply[A](edge: Edge[A]): Option[(Vertex[A], Vertex[A], Double)] = Some(edge.from, edge.to, edge.weight)
 }
 
-object BF {
-  def groupEdgesByVertex[A](edges: Seq[Edge[A]]): Map[Vertex[A], Seq[Edge[A]]] = edges
-    .foldLeft(Map.empty[Vertex[A], Seq[Edge[A]]])((acc, edge) =>
-      acc + (edge.from -> {
-        val x: Seq[Edge[A]] = acc.getOrElse(edge.from, Seq.empty[Edge[A]])
-        x :+ edge
-      })
-    )
-  def find[A](edges: Seq[Edge[A]]) = {
-    val edgesByVertex: Map[Vertex[A], Seq[Edge[A]]] = groupEdgesByVertex(edges)
+object BellmanFordAlgorithm {
+
+  def findNegativeCycle[A](edges: Seq[Edge[A]]) = {
+
     val startVertex = edges.head.from
     startVertex.distance = 0
-    val verticesCount = edgesByVertex.size
-    for {
-      _ <- 1 until verticesCount
-      edge <- edges
-      _ = if (edge.from.distance + edge.weight < edge.to.distance) {
-        edge.to.distance = edge.from.distance + edge.weight
-        edge.to.predecessor = Some(edge.from)
+
+    def pathIsShorterWith(edge: Edge[A]): Boolean = edge.from.distance + edge.weight < edge.to.distance
+
+    for (_ <- 1 until edges.size) {
+      for (edge <- edges) {
+        if (pathIsShorterWith(edge)) {
+          edge.to.distance = edge.from.distance + edge.weight
+          edge.to.predecessor = Some(edge.from)
+        }
       }
-    } yield ()
+    }
 
     var detectedCycle: Option[Seq[Vertex[A]]] = None
 
     for (edge <- edges if detectedCycle.isEmpty) {
-      if (edge.from.distance + edge.weight < edge.to.distance) {
+      if (pathIsShorterWith(edge)) {
         // cycle detected
         val cycle = mutable.ArrayBuffer.empty[Vertex[A]]
+        val alreadyInCycle = mutable.Set.empty[Vertex[A]]
         var vertex = edge.from
         cycle += vertex
-        while (vertex != edge.to) {
+        alreadyInCycle += vertex
+        var shorterCycleExists = false
+        // trace back the cycle
+        while (vertex != edge.to && !shorterCycleExists) {
           vertex = vertex.predecessor.get
-          cycle += vertex
-          println(vertex, edge.to)
+          if (alreadyInCycle.contains(vertex)) {
+            shorterCycleExists = true
+          } else {
+            cycle += vertex
+            alreadyInCycle += vertex
+          }
         }
+        // previous loop stops on returning to the start edge, add it here
         cycle += edge.from
-        detectedCycle = Some(cycle.toSeq)
+        detectedCycle = if (shorterCycleExists) None else Some(cycle.toSeq)
       }
     }
     detectedCycle
@@ -136,16 +138,15 @@ object BF {
 
 object Converter {
   def calculate(c: Map[Conversion, Double]): Unit = {
-    val verticesCache = mutable.Map.empty[Asset, Vertex[Asset]]
-    def mkVertex(asset: Asset): Vertex[Asset] = verticesCache.getOrElseUpdate(asset, new Vertex(asset))
-    val domain: Seq[Edge[Asset]] = c.map { case (Conversion(from, to), rate) =>
+    val verticesCache = mutable.Map.empty[String, Vertex[String]]
+    def mkVertex(asset: String): Vertex[String] = verticesCache.getOrElseUpdate(asset, new Vertex(asset))
+    val domain: Seq[Edge[String]] = c.map { case (Conversion(from, to), rate) =>
       new Edge(mkVertex(from), mkVertex(to), -Math.log(rate))
     }.toSeq
-    val groupedByVertex = BF.groupEdgesByVertex(domain)
-    val stronglyConnectedComponents = Tarjan.split(groupedByVertex)
-    val cycles = stronglyConnectedComponents.flatMap(scc => BF.find(scc.values.toSeq.flatten))
+    val stronglyConnectedComponents = Tarjan.split(domain)
+    val cycles =
+      stronglyConnectedComponents.flatMap(scc => BellmanFordAlgorithm.findNegativeCycle(scc.values.toSeq.flatten))
 
-//    val cycles = BF.find(domain)
     cycles.foreach { cycle =>
       val returnOnArbitrage = cycle
         .zip(cycle.tail)
@@ -166,7 +167,5 @@ object ArbitrageOpportunitiesFinder extends App {
   println(res.text())
   val json = JsonParser.parse(res.text())
   Converter.calculate(json)
-//  println(StronglyConnectedComponents.toVerticesWithAdjacencyList(json.keys.toSeq))
 
-  println(json)
 }
