@@ -8,10 +8,11 @@ import org.scalatest.matchers.should
 import scala.io.Source
 
 class ArbitrageOpportunitiesFinderTest extends AnyFunSuite with should.Matchers {
+
   test("single edge") {
     val usd = new Vertex("USD")
     val res = BellmanFordAlgorithm.findNegativeCycle(Seq(new Edge(usd, usd, 1.0)))
-    println(res)
+    res.map(_.map(_.id)) should be(None)
   }
 
   test("single cycle equilibrium") {
@@ -23,7 +24,7 @@ class ArbitrageOpportunitiesFinderTest extends AnyFunSuite with should.Matchers 
         new Edge(pln, usd, -Math.log(4))
       )
     )
-    println(res)
+    res.map(_.map(_.id)) should be(None)
   }
 
   test("single cycle arbitrage opportunity") {
@@ -35,10 +36,10 @@ class ArbitrageOpportunitiesFinderTest extends AnyFunSuite with should.Matchers 
         new Edge(pln, usd, -Math.log(5))
       )
     )
-    println(res)
+    res.map(_.map(_.id)) should be(Some(List("USD", "PLN", "USD")))
   }
 
-  test("two cycles single cycle three pairs equilibrium") {
+  test("two cycles three assets equilibrium") {
     val usd = new Vertex("USD")
     val pln = new Vertex("PLN")
     val eur = new Vertex("EUR")
@@ -50,7 +51,7 @@ class ArbitrageOpportunitiesFinderTest extends AnyFunSuite with should.Matchers 
         new Edge(eur, pln, -Math.log(0.2))
       )
     )
-    println(res)
+    res.map(_.map(_.id)) should be(None)
   }
 
   test("two cycles three pairs arbitrage opportunity") {
@@ -65,7 +66,7 @@ class ArbitrageOpportunitiesFinderTest extends AnyFunSuite with should.Matchers 
         new Edge(eur, pln, -Math.log(0.25))
       )
     )
-    println(res)
+    res.map(_.map(_.id)) should be(Some(List("PLN", "EUR", "PLN")))
   }
 
   test("two cycles detected") {
@@ -80,7 +81,7 @@ class ArbitrageOpportunitiesFinderTest extends AnyFunSuite with should.Matchers 
         new Edge(c, b, -1)
       )
     )
-    println(res)
+    res.map(_.map(_.id)) should be(Some(List("B", "C", "B")))
   }
 
   test("scc") {
@@ -89,22 +90,47 @@ class ArbitrageOpportunitiesFinderTest extends AnyFunSuite with should.Matchers 
     val c = new Vertex("C")
     val d = new Vertex("D")
     val e = new Vertex("E")
-    val res = Tarjan.split(
+    val ab = new Edge(a, b, -1)
+    val ba = new Edge(b, a, -1)
+    val bc = new Edge(b, c, -1)
+    val cb = new Edge(c, b, -1)
+    val ed = new Edge(e, d, -1)
+    val res = TarjanAlgorithm.splitByStronglyConnectedComponents(
       Seq(
-        new Edge(a, b, -1),
-        new Edge(b, a, -1),
-        new Edge(b, c, -1),
-        new Edge(c, b, -1),
-        new Edge(e, d, -1)
+        ab,
+        ba,
+        bc,
+        cb,
+        ed
       )
     )
-    println(res)
+    res should be(
+      Set(
+        Map(
+          a -> List(ab),
+          b -> List(ba, bc),
+          c -> List(cb)
+        ),
+        Map(
+          e -> List(ed)
+        ),
+        Map(
+          d -> List()
+        )
+      )
+    )
   }
 
   test("from.json") {
-    val res = Source.fromResource("rates.json").mkString
-    val parsed = JsonParser.parse(res)
-    Converter.calculate(parsed)
-    println(res)
+    val text = Source.fromResource("rates.json").mkString
+    val parsed = JsonParser.parse(text)
+    val loops = ArbitrageLoop.find(parsed)
+    val report = ArbitrageLoop.reportArbitrageLoops(parsed, loops)
+    report should be(
+      Set(
+        "[PLN->CZK->PLN] return on arbitrage: 1.0185590003465×",
+        "[JPY->EUR->JPY] return on arbitrage: 1.15902147810912×"
+      )
+    )
   }
 }
